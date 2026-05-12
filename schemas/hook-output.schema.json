@@ -15,6 +15,21 @@
     "message": {
       "type": "string",
       "description": "Human-readable explanation. Must be non-empty when decision is 'deny'. Should be empty string when decision is 'allow'."
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["configured", "default"],
+      "description": "How environment files were discovered. Only present for hooks that validate mounts."
+    },
+    "mount_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of environment files validated. Only present for hooks that validate mounts."
+    },
+    "deny_reason": {
+      "type": ["string", "null"],
+      "enum": ["file_missing", "file_disabled", null],
+      "description": "Reason for denial. Null when decision is allow. Only present for hooks that validate mounts."
     }
   },
   "allOf": [

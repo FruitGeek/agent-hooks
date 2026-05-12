@@ -16,6 +16,13 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 source "${REPO_ROOT}/lib/logging.sh"
 source "${REPO_ROOT}/lib/json.sh"
+source "${REPO_ROOT}/lib/telemetry.sh"
+
+# Read hook version from VERSION file
+HOOK_VERSION=""
+if [[ -f "${REPO_ROOT}/VERSION" ]]; then
+    HOOK_VERSION=$(head -n1 "${REPO_ROOT}/VERSION" 2>/dev/null || echo "")
+fi
 
 HOOK_NAME="${1:-}"
 if [[ -z "$HOOK_NAME" ]]; then
@@ -79,7 +86,8 @@ if [[ -z "$canonical_input" ]]; then
     exit 0
 fi
 
-log "Canonical event: $(extract_json_string "$canonical_input" "event")"
+canonical_event=$(extract_json_string "$canonical_input" "event")
+log "Canonical event: ${canonical_event}"
 
 # ── 5. Pipe to hook ─────────────────────────────────────────────────────
 start_ms=$(($(date +%s) * 1000))
@@ -103,6 +111,35 @@ if [[ -z "$decision" ]]; then
 fi
 
 log "Hook result: decision=${decision} duration_ms=${duration_ms}"
+
+# ── 7. Write telemetry event ────────────────────────────────────────────────
+# Wrapped in a subshell with || true to guarantee fail-open behavior.
+# If anything here fails, the hook decision is unaffected.
+(
+    hook_mode=$(extract_json_string "$canonical_output" "mode")
+    hook_mount_count=$(extract_json_integer "$canonical_output" "mount_count")
+    hook_deny_reason=$(extract_json_string "$canonical_output" "deny_reason")
+
+    # Defaults for hooks that don't emit these fields
+    [[ -z "$hook_mode" ]] && hook_mode="default"
+    [[ -z "$hook_mount_count" ]] && hook_mount_count="0"
+
+    duration_bucket=$(bucket_duration_ms "$duration_ms")
+    install_method=$(detect_install_method "$SCRIPT_DIR")
+
+    write_execution_event \
+        "$HOOK_NAME" \
+        "$HOOK_VERSION" \
+        "$detected_client" \
+        "$canonical_event" \
+        "$decision" \
+        "$hook_deny_reason" \
+        "$duration_bucket" \
+        "$hook_mode" \
+        "$hook_mount_count"
+
+    check_install_sentinel "$detected_client" "$HOOK_NAME" "$install_method"
+) 2>/dev/null || true
 
 # ── 8–9. Emit client-specific output and exit ───────────────────────────────
 emit_output "$canonical_output"

@@ -43,6 +43,11 @@ permission="allow"
 # The message for the agent to interpret if the permission is denied.
 agent_message=""
 
+# Telemetry metadata — passed through canonical output for run-hook.sh to read.
+resolved_mode="default"
+total_mount_count=0
+deny_reason=""
+
 
 # ============================================================================
 # 1PASSWORD DATABASE FUNCTIONS
@@ -364,14 +369,21 @@ parse_toml_mount_paths() {
     return 1
 }
 
-# Emit one JSON line to stdout (decision, message).
+# Emit one JSON line to stdout (decision, message, and telemetry metadata).
 output_decision() {
     if [[ "$permission" == "allow" ]]; then
         msg_escaped=""
     else
         msg_escaped=$(escape_json_string "$agent_message")
     fi
-    printf '{"decision":"%s","message":"%s"}\n' "$permission" "$msg_escaped"
+    local deny_reason_json
+    if [[ -z "$deny_reason" ]]; then
+        deny_reason_json="null"
+    else
+        deny_reason_json="\"${deny_reason}\""
+    fi
+    printf '{"decision":"%s","message":"%s","mode":"%s","mount_count":%d,"deny_reason":%s}\n' \
+        "$permission" "$msg_escaped" "$resolved_mode" "$total_mount_count" "$deny_reason_json"
 }
 
 # ============================================================================
@@ -432,6 +444,7 @@ for workspace_root in "${workspace_roots_array[@]}"; do
 
         if has_toml_mount_paths_field "$toml_file"; then
             use_configured_mode=true
+            resolved_mode="configured"
             log "environments.toml has mount_paths field defined - validating specified mounts"
 
             # Parse and validate TOML mount paths
@@ -499,6 +512,7 @@ for workspace_root in "${workspace_roots_array[@]}"; do
         # Check each TOML-specified mount
         if [[ ${#toml_paths_array[@]} -gt 0 ]]; then
             for resolved_path in "${toml_paths_array[@]}"; do
+                ((total_mount_count++)) || true
                 log "Checking required local .env file from TOML: \"${resolved_path}\""
 
                 # First, check if it's in the database and what its status is
@@ -595,6 +609,8 @@ for workspace_root in "${workspace_roots_array[@]}"; do
                     log "Local .env file does not belong to workspace ${workspace_root}, skipping"
                     continue
                 fi
+
+                ((total_mount_count++)) || true
 
                 if [[ "$is_enabled" == "true" ]]; then
                     if [[ ! -e "$mount_path" ]] || [[ ! -p "$mount_path" ]]; then
@@ -703,6 +719,15 @@ if [[ ${#all_missing_invalid[@]} -gt 0 ]] || [[ ${#disabled_mounts[@]} -gt 0 ]];
                 agent_message="This project uses 1Password environments. Environment files are expected to be mounted at the specified paths. ${disabled_msg}"
             fi
         fi
+    fi
+fi
+
+# Derive deny_reason for telemetry
+if [[ "$permission" == "deny" ]]; then
+    if [[ ${#all_missing_invalid[@]} -gt 0 ]]; then
+        deny_reason="file_missing"
+    elif [[ ${#disabled_mounts[@]} -gt 0 ]]; then
+        deny_reason="file_disabled"
     fi
 fi
 
