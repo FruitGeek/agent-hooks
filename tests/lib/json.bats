@@ -107,6 +107,51 @@ setup() {
     [[ "$output" == "$original" ]]
 }
 
+# ========== extract_json_integer ==========
+
+@test "extract_json_integer extracts a simple integer" {
+    local json='{"mount_count": 3}'
+    run extract_json_integer "$json" "mount_count"
+    [[ "$output" == "3" ]]
+}
+
+@test "extract_json_integer extracts zero" {
+    local json='{"mount_count": 0}'
+    run extract_json_integer "$json" "mount_count"
+    [[ "$output" == "0" ]]
+}
+
+@test "extract_json_integer extracts large number" {
+    local json='{"mount_count": 12345}'
+    run extract_json_integer "$json" "mount_count"
+    [[ "$output" == "12345" ]]
+}
+
+@test "extract_json_integer returns empty for missing key" {
+    local json='{"other": 5}'
+    run extract_json_integer "$json" "mount_count"
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "" ]]
+}
+
+@test "extract_json_integer handles whitespace around colon" {
+    local json='{"mount_count"  :  7}'
+    run extract_json_integer "$json" "mount_count"
+    [[ "$output" == "7" ]]
+}
+
+@test "extract_json_integer does not match string values" {
+    local json='{"mount_count": "3"}'
+    run extract_json_integer "$json" "mount_count"
+    [[ "$output" == "" ]]
+}
+
+@test "extract_json_integer extracts from mixed JSON" {
+    local json='{"decision":"allow","message":"","mode":"default","mount_count":2,"deny_reason":null}'
+    run extract_json_integer "$json" "mount_count"
+    [[ "$output" == "2" ]]
+}
+
 # ========== parse_json_workspace_roots ==========
 
 @test "parse_json_workspace_roots extracts single-line array" {
