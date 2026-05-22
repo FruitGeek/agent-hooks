@@ -24,6 +24,37 @@ bucket_duration_ms() {
     fi
 }
 
+current_time_ms() {
+    local now seconds fraction
+
+    if [[ "${EPOCHREALTIME:-}" =~ ^[0-9]+\.[0-9]+$ ]]; then
+        seconds="${EPOCHREALTIME%.*}"
+        fraction="${EPOCHREALTIME#*.}000"
+        echo "${seconds}${fraction:0:3}"
+        return 0
+    fi
+
+    now=$(date +%s%3N 2>/dev/null || true)
+    if [[ "$now" =~ ^[0-9]+$ ]]; then
+        echo "$now"
+        return 0
+    fi
+
+    now=$(perl -MTime::HiRes=time -e 'printf "%.0f\n", time() * 1000' 2>/dev/null || true)
+    if [[ "$now" =~ ^[0-9]+$ ]]; then
+        echo "$now"
+        return 0
+    fi
+
+    now=$(python3 -c 'import time; print(int(time.time() * 1000))' 2>/dev/null || true)
+    if [[ "$now" =~ ^[0-9]+$ ]]; then
+        echo "$now"
+        return 0
+    fi
+
+    echo "$(($(date +%s) * 1000))"
+}
+
 get_telemetry_dir() {
     echo "${HOME}/.config/1Password/data/hook-events"
 }
@@ -70,7 +101,7 @@ write_execution_event() {
     local event_type="$4"
     local decision="$5"
     local deny_reason="$6"
-    local duration_bucket="$7"
+    local duration_ms="$7"
     local mode="$8"
     local mount_count="$9"
 
@@ -87,8 +118,13 @@ write_execution_event() {
         deny_reason_json="\"${deny_reason}\""
     fi
 
+    # The agent_hook_execution snowplow schema (com.1password.app, v1-0-0)
+    # defines duration_ms as a bucketed string enum, not raw milliseconds.
+    local duration_ms_bucket
+    duration_ms_bucket=$(bucket_duration_ms "$duration_ms")
+
     local json_line
-    json_line="{\"schema\":\"agent_hook_execution\",\"hook_name\":\"${escaped_hook_name}\",\"hook_version\":\"${escaped_hook_version}\",\"client\":\"${escaped_client}\",\"event_type\":\"${escaped_event_type}\",\"decision\":\"${decision}\",\"deny_reason\":${deny_reason_json},\"duration_ms\":\"${duration_bucket}\",\"mode\":\"${mode}\",\"mount_count\":${mount_count}}"
+    json_line="{\"schema\":\"agent_hook_execution\",\"hook_name\":\"${escaped_hook_name}\",\"hook_version\":\"${escaped_hook_version}\",\"client\":\"${escaped_client}\",\"event_type\":\"${escaped_event_type}\",\"decision\":\"${decision}\",\"deny_reason\":${deny_reason_json},\"duration_ms\":\"${duration_ms_bucket}\",\"mode\":\"${mode}\",\"mount_count\":${mount_count}}"
 
     write_telemetry_event "$json_line"
 }

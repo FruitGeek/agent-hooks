@@ -90,11 +90,11 @@ canonical_event=$(extract_json_string "$canonical_input" "event")
 log "Canonical event: ${canonical_event}"
 
 # ── 5. Pipe to hook ─────────────────────────────────────────────────────
-start_ms=$(($(date +%s) * 1000))
+start_ms=$(current_time_ms)
 
 canonical_output=$(echo "$canonical_input" | bash "$HOOK_SCRIPT" 2>/dev/null) || true
 
-end_ms=$(($(date +%s) * 1000))
+end_ms=$(current_time_ms)
 duration_ms=$((end_ms - start_ms))
 
 if [[ -z "$canonical_output" ]]; then
@@ -124,7 +124,6 @@ log "Hook result: decision=${decision} duration_ms=${duration_ms}"
     [[ -z "$hook_mode" ]] && hook_mode="default"
     [[ -z "$hook_mount_count" ]] && hook_mount_count="0"
 
-    duration_bucket=$(bucket_duration_ms "$duration_ms")
     install_method=$(detect_install_method "$SCRIPT_DIR")
 
     write_execution_event \
@@ -134,7 +133,7 @@ log "Hook result: decision=${decision} duration_ms=${duration_ms}"
         "$canonical_event" \
         "$decision" \
         "$hook_deny_reason" \
-        "$duration_bucket" \
+        "$duration_ms" \
         "$hook_mode" \
         "$hook_mount_count"
 

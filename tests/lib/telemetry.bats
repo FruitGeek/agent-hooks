@@ -151,7 +151,7 @@ create_consent_signal() {
         "before_shell_execution" \
         "allow" \
         "" \
-        "0-50" \
+        "42" \
         "configured" \
         "3"
     local event_file
@@ -164,6 +164,8 @@ create_consent_signal() {
     [[ "$line" == *'"client":"cursor"'* ]]
     [[ "$line" == *'"decision":"allow"'* ]]
     [[ "$line" == *'"deny_reason":null'* ]]
+    [[ "$line" == *'"duration_ms":"0-50"'* ]]
+    [[ "$line" != *'"duration_bucket"'* ]]
     [[ "$line" == *'"mode":"configured"'* ]]
     [[ "$line" == *'"mount_count":3'* ]]
 }
@@ -177,7 +179,7 @@ create_consent_signal() {
         "before_shell_execution" \
         "deny" \
         "file_missing" \
-        "1000-5000" \
+        "1234" \
         "default" \
         "1"
     local event_file
@@ -186,6 +188,8 @@ create_consent_signal() {
     line=$(cat "$event_file")
     [[ "$line" == *'"deny_reason":"file_missing"'* ]]
     [[ "$line" == *'"decision":"deny"'* ]]
+    [[ "$line" == *'"duration_ms":"1000-5000"'* ]]
+    [[ "$line" != *'"duration_bucket"'* ]]
 }
 
 # ========== write_install_event ==========
