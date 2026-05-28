@@ -25,54 +25,54 @@ create_consent_signal() {
 
 # ========== bucket_duration_ms ==========
 
-@test "bucket_duration_ms: 0 returns 0-50" {
+@test "bucket_duration_ms: 0 returns ms_0_to_50" {
     run bucket_duration_ms 0
-    [[ "$output" == "0-50" ]]
+    [[ "$output" == "ms_0_to_50" ]]
 }
 
-@test "bucket_duration_ms: 49 returns 0-50" {
+@test "bucket_duration_ms: 49 returns ms_0_to_50" {
     run bucket_duration_ms 49
-    [[ "$output" == "0-50" ]]
+    [[ "$output" == "ms_0_to_50" ]]
 }
 
-@test "bucket_duration_ms: 50 returns 50-100" {
+@test "bucket_duration_ms: 50 returns ms_50_to_100" {
     run bucket_duration_ms 50
-    [[ "$output" == "50-100" ]]
+    [[ "$output" == "ms_50_to_100" ]]
 }
 
-@test "bucket_duration_ms: 99 returns 50-100" {
+@test "bucket_duration_ms: 99 returns ms_50_to_100" {
     run bucket_duration_ms 99
-    [[ "$output" == "50-100" ]]
+    [[ "$output" == "ms_50_to_100" ]]
 }
 
-@test "bucket_duration_ms: 100 returns 100-200" {
+@test "bucket_duration_ms: 100 returns ms_100_to_200" {
     run bucket_duration_ms 100
-    [[ "$output" == "100-200" ]]
+    [[ "$output" == "ms_100_to_200" ]]
 }
 
-@test "bucket_duration_ms: 500 returns 500-1000" {
+@test "bucket_duration_ms: 500 returns ms_500_to_1000" {
     run bucket_duration_ms 500
-    [[ "$output" == "500-1000" ]]
+    [[ "$output" == "ms_500_to_1000" ]]
 }
 
-@test "bucket_duration_ms: 1000 returns 1000-5000" {
+@test "bucket_duration_ms: 1000 returns ms_1000_to_5000" {
     run bucket_duration_ms 1000
-    [[ "$output" == "1000-5000" ]]
+    [[ "$output" == "ms_1000_to_5000" ]]
 }
 
-@test "bucket_duration_ms: 5000 returns 5000+" {
+@test "bucket_duration_ms: 5000 returns ms_5000_plus" {
     run bucket_duration_ms 5000
-    [[ "$output" == "5000+" ]]
+    [[ "$output" == "ms_5000_plus" ]]
 }
 
-@test "bucket_duration_ms: 10000 returns 5000+" {
+@test "bucket_duration_ms: 10000 returns ms_5000_plus" {
     run bucket_duration_ms 10000
-    [[ "$output" == "5000+" ]]
+    [[ "$output" == "ms_5000_plus" ]]
 }
 
-@test "bucket_duration_ms: empty input returns 0-50" {
+@test "bucket_duration_ms: empty input returns ms_0_to_50" {
     run bucket_duration_ms ""
-    [[ "$output" == "0-50" ]]
+    [[ "$output" == "ms_0_to_50" ]]
 }
 
 # ========== telemetry_consent_enabled ==========
@@ -164,7 +164,7 @@ create_consent_signal() {
     [[ "$line" == *'"client":"cursor"'* ]]
     [[ "$line" == *'"decision":"allow"'* ]]
     [[ "$line" == *'"deny_reason":null'* ]]
-    [[ "$line" == *'"duration_ms":"0-50"'* ]]
+    [[ "$line" == *'"duration_ms":"ms_0_to_50"'* ]]
     [[ "$line" != *'"duration_bucket"'* ]]
     [[ "$line" == *'"mode":"configured"'* ]]
     [[ "$line" == *'"mount_count":3'* ]]
@@ -188,8 +188,37 @@ create_consent_signal() {
     line=$(cat "$event_file")
     [[ "$line" == *'"deny_reason":"file_missing"'* ]]
     [[ "$line" == *'"decision":"deny"'* ]]
-    [[ "$line" == *'"duration_ms":"1000-5000"'* ]]
+    [[ "$line" == *'"duration_ms":"ms_1000_to_5000"'* ]]
     [[ "$line" != *'"duration_bucket"'* ]]
+}
+
+@test "write_execution_event: deny_reason is JSON-escaped" {
+    create_consent_signal
+    # Inject a value containing characters that would break JSON if unescaped.
+    # The schema currently only allows enum values, but defense-in-depth says
+    # the writer must always produce valid JSON regardless of upstream input.
+    write_execution_event \
+        "validate_mounted_env_files" \
+        "0.1.0" \
+        "cursor" \
+        "before_shell_execution" \
+        "deny" \
+        'bad"value\with' \
+        "1234" \
+        "default" \
+        "1"
+    local event_file
+    event_file="$(get_telemetry_dir)/events.jsonl"
+    local line
+    line=$(cat "$event_file")
+    # Escaped quote and backslash should be present
+    [[ "$line" == *'"deny_reason":"bad\"value\\with"'* ]]
+    # Raw unescaped form must not appear
+    [[ "$line" != *'"deny_reason":"bad"value\with"'* ]]
+    # JSON must still be parseable (validate via python if available)
+    if command -v python3 >/dev/null 2>&1; then
+        echo "$line" | python3 -c 'import sys, json; json.loads(sys.stdin.read())'
+    fi
 }
 
 # ========== write_install_event ==========
@@ -211,55 +240,58 @@ create_consent_signal() {
 
 @test "check_install_sentinel: creates sentinel and writes event on first call" {
     create_consent_signal
-    check_install_sentinel "cursor" "validate_mounted_env_files" "plugin_marketplace"
+    check_install_sentinel "cursor" "validate_mounted_env_files" "install_script"
     local event_dir
     event_dir="$(get_telemetry_dir)"
-    [[ -f "${event_dir}/.installed-cursor-validate_mounted_env_files-plugin_marketplace" ]]
+    [[ -f "${event_dir}/.installed-cursor-validate_mounted_env_files-install_script" ]]
     [[ -f "${event_dir}/events.jsonl" ]]
 }
 
 @test "check_install_sentinel: no-op on second call" {
     create_consent_signal
-    check_install_sentinel "cursor" "validate_mounted_env_files" "plugin_marketplace"
+    check_install_sentinel "cursor" "validate_mounted_env_files" "install_script"
     local event_file
     event_file="$(get_telemetry_dir)/events.jsonl"
     local count_before
     count_before=$(wc -l < "$event_file" | tr -d ' ')
-    check_install_sentinel "cursor" "validate_mounted_env_files" "plugin_marketplace"
+    check_install_sentinel "cursor" "validate_mounted_env_files" "install_script"
     local count_after
     count_after=$(wc -l < "$event_file" | tr -d ' ')
     [[ "$count_before" -eq "$count_after" ]]
 }
 
 @test "check_install_sentinel: no-op when consent absent" {
-    check_install_sentinel "cursor" "validate_mounted_env_files" "plugin_marketplace"
+    check_install_sentinel "cursor" "validate_mounted_env_files" "install_script"
     local event_dir
     event_dir="$(get_telemetry_dir)"
-    [[ ! -f "${event_dir}/.installed-cursor-validate_mounted_env_files-plugin_marketplace" ]]
+    [[ ! -f "${event_dir}/.installed-cursor-validate_mounted_env_files-install_script" ]]
+}
+
+@test "check_install_sentinel: dedupes by install_method" {
+    create_consent_signal
+    check_install_sentinel "cursor" "validate_mounted_env_files" "install_script"
+    check_install_sentinel "cursor" "validate_mounted_env_files" "manual"
+    local event_file
+    event_file="$(get_telemetry_dir)/events.jsonl"
+    # Two distinct install_methods produce two distinct sentinels and events.
+    local count
+    count=$(wc -l < "$event_file" | tr -d ' ')
+    [[ "$count" -eq 2 ]]
 }
 
 # ========== detect_install_method ==========
-
-@test "detect_install_method: returns plugin_marketplace when CURSOR_PLUGIN_ROOT set" {
-    export CURSOR_PLUGIN_ROOT="/path/to/plugin"
-    run detect_install_method "/some/dir"
-    [[ "$output" == "plugin_marketplace" ]]
-    unset CURSOR_PLUGIN_ROOT
-}
-
-@test "detect_install_method: returns plugin_marketplace when CLAUDE_PLUGIN_ROOT set" {
-    export CLAUDE_PLUGIN_ROOT="/path/to/plugin"
-    run detect_install_method "/some/dir"
-    [[ "$output" == "plugin_marketplace" ]]
-    unset CLAUDE_PLUGIN_ROOT
-}
 
 @test "detect_install_method: returns install_script when path contains bundle marker" {
     run detect_install_method "/project/.cursor/cursor-1password-hooks-bundle/bin"
     [[ "$output" == "install_script" ]]
 }
 
-@test "detect_install_method: returns unknown when no signal matches" {
+@test "detect_install_method: returns manual for manually-copied bundles" {
     run detect_install_method "/some/random/dir"
-    [[ "$output" == "unknown" ]]
+    [[ "$output" == "manual" ]]
+}
+
+@test "detect_install_method: returns manual when caller_dir is empty" {
+    run detect_install_method ""
+    [[ "$output" == "manual" ]]
 }

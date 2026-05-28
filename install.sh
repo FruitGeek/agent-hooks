@@ -299,12 +299,14 @@ if [[ -n "$CONFIG_FILE" ]]; then
   fi
 fi
 
-# Write install telemetry event
+# Write install telemetry event.
+# Uses check_install_sentinel so the same install is not re-emitted by
+# bin/run-hook.sh on first invocation.
 (
   source "${REPO_ROOT}/lib/telemetry.sh"
   while IFS=$'\t' read -r _event hook_name; do
     [[ -z "$hook_name" ]] && continue
-    write_install_event "$AGENT" "$hook_name" "install_script"
+    check_install_sentinel "$AGENT" "$hook_name" "install_script"
   done < <(get_hook_events "$AGENT_BLOCK")
 ) 2>/dev/null || true
 

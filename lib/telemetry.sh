@@ -11,16 +11,16 @@ _LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${_LIB_DIR}/logging.sh"
 source "${_LIB_DIR}/json.sh"
 
-# Convert raw milliseconds to a bucketed range string
+# Convert raw milliseconds to a bucketed range string.
 bucket_duration_ms() {
     local ms="${1:-0}"
-    if [[ "$ms" -lt 50 ]]; then echo "0-50"
-    elif [[ "$ms" -lt 100 ]]; then echo "50-100"
-    elif [[ "$ms" -lt 200 ]]; then echo "100-200"
-    elif [[ "$ms" -lt 500 ]]; then echo "200-500"
-    elif [[ "$ms" -lt 1000 ]]; then echo "500-1000"
-    elif [[ "$ms" -lt 5000 ]]; then echo "1000-5000"
-    else echo "5000+"
+    if [[ "$ms" -lt 50 ]]; then echo "ms_0_to_50"
+    elif [[ "$ms" -lt 100 ]]; then echo "ms_50_to_100"
+    elif [[ "$ms" -lt 200 ]]; then echo "ms_100_to_200"
+    elif [[ "$ms" -lt 500 ]]; then echo "ms_200_to_500"
+    elif [[ "$ms" -lt 1000 ]]; then echo "ms_500_to_1000"
+    elif [[ "$ms" -lt 5000 ]]; then echo "ms_1000_to_5000"
+    else echo "ms_5000_plus"
     fi
 }
 
@@ -80,7 +80,7 @@ write_telemetry_event() {
 
     local event_file="${event_dir}/events.jsonl"
 
-    # 1MB file size cap (~4100 events)
+    # 1MB file size cap
     if [[ -f "$event_file" ]]; then
         local file_size
         file_size=$(stat -f%z "$event_file" 2>/dev/null || stat -c%s "$event_file" 2>/dev/null || echo "0")
@@ -115,7 +115,9 @@ write_execution_event() {
     if [[ -z "$deny_reason" ]]; then
         deny_reason_json="null"
     else
-        deny_reason_json="\"${deny_reason}\""
+        local escaped_deny_reason
+        escaped_deny_reason=$(escape_json_string "$deny_reason")
+        deny_reason_json="\"${escaped_deny_reason}\""
     fi
 
     # The agent_hook_execution snowplow schema (com.1password.app, v1-0-0)
@@ -146,7 +148,9 @@ write_install_event() {
 }
 
 # Write an install event on first execution per client+hook combination.
-# Uses a sentinel file to avoid reporting duplicate events per install via plugin marketplace
+# A sentinel file prevents duplicate emissions on subsequent hook invocations.
+# Plugin marketplace installs are NOT emitted from this layer — they are owned
+# by the plugin distribution repo (e.g. cursor-plugin).
 check_install_sentinel() {
     local client="$1"
     local hook_name="$2"
@@ -167,23 +171,25 @@ check_install_sentinel() {
     fi
 }
 
-# Detect how the hook was deployed: plugin marketplace or install script.
+# Detect how the hook was deployed by this repo's distribution paths.
 # Pass the caller's SCRIPT_DIR as the argument.
+#
+# Returns:
+#   install_script — bundle directory matches the layout produced by install.sh
+#   manual         — bundle was placed manually (e.g. `cp -r`, custom symlink,
+#                    `git clone` + direct IDE config)
+#
+# Plugin marketplace distributions (Cursor, Claude Code, etc.) are NOT
+# detected here. Each plugin repo is responsible for emitting its own
+# `agent_hook_install` event with its specific install_method value at
+# install/activation time. See docs/install-event-contract.md.
 detect_install_method() {
     local caller_dir="${1:-}"
 
-    # Primary: IDE-provided plugin env vars (authoritative)
-    # Covers Cursor, Claude Code, and GitHub Copilot (which reuses CLAUDE_PLUGIN_ROOT)
-    if [[ -n "${CURSOR_PLUGIN_ROOT:-}" ]] || [[ -n "${CLAUDE_PLUGIN_ROOT:-}" ]]; then
-        echo "plugin_marketplace"
-        return 0
-    fi
-
-    # Secondary: Bundle directory naming convention from install.sh
     if [[ -n "$caller_dir" ]] && [[ "$caller_dir" == *"-1password-hooks-bundle"* ]]; then
         echo "install_script"
         return 0
     fi
 
-    echo "unknown"
+    echo "manual"
 }
