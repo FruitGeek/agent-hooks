@@ -147,14 +147,16 @@ write_install_event() {
     write_telemetry_event "$json_line"
 }
 
-# Write an install event on first execution per client+hook combination.
-# A sentinel file prevents duplicate emissions on subsequent hook invocations.
-# Plugin marketplace installs are NOT emitted from this layer — they are owned
-# by the plugin distribution repo (e.g. cursor-plugin).
-check_install_sentinel() {
+# Emit an `agent_hook_install` event with install_method=manual exactly once
+# per (client, hook_name). Intended for `bin/run-hook.sh` only — without the
+# sentinel, the bundle being run from a manually-copied location would emit
+# an install event on every hook invocation.
+#
+# All other install paths (install.sh, plugin marketplaces) call
+# write_install_event directly.
+emit_manual_install_event_once() {
     local client="$1"
     local hook_name="$2"
-    local install_method="$3"
     local event_dir
     event_dir=$(get_telemetry_dir)
 
@@ -164,9 +166,9 @@ check_install_sentinel() {
 
     mkdir -p "$event_dir" 2>/dev/null || return 0
 
-    local sentinel="${event_dir}/.installed-${client}-${hook_name}-${install_method}"
+    local sentinel="${event_dir}/.installed-${client}-${hook_name}-manual"
     if [[ ! -f "$sentinel" ]]; then
-        write_install_event "$client" "$hook_name" "$install_method"
+        write_install_event "$client" "$hook_name" "manual"
         touch "$sentinel" 2>/dev/null || true
     fi
 }
@@ -182,7 +184,7 @@ check_install_sentinel() {
 # Plugin marketplace distributions (Cursor, Claude Code, etc.) are NOT
 # detected here. Each plugin repo is responsible for emitting its own
 # `agent_hook_install` event with its specific install_method value at
-# install/activation time. See docs/install-event-contract.md.
+# install/activation time.
 detect_install_method() {
     local caller_dir="${1:-}"
 

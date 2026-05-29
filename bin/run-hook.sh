@@ -137,7 +137,15 @@ log "Hook result: decision=${decision} duration_ms=${duration_ms}"
         "$hook_mode" \
         "$hook_mount_count"
 
-    check_install_sentinel "$detected_client" "$HOOK_NAME" "$install_method"
+    # Install events are only emitted from this layer for manually-copied
+    # bundles. install.sh emits its own install_script events directly, and
+    # plugin distributions (Cursor marketplace, etc.) are responsible for
+    # emitting their own. The sentinel inside the helper exists purely to
+    # keep run-hook.sh from re-emitting the manual event on every hook
+    # invocation.
+    if [[ "$install_method" == "manual" ]]; then
+        emit_manual_install_event_once "$detected_client" "$HOOK_NAME"
+    fi
 ) 2>/dev/null || true
 
 # ── 8–9. Emit client-specific output and exit ───────────────────────────────

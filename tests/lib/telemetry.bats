@@ -236,46 +236,50 @@ create_consent_signal() {
     [[ "$line" == *'"install_method":"install_script"'* ]]
 }
 
-# ========== check_install_sentinel ==========
+# ========== emit_manual_install_event_once ==========
 
-@test "check_install_sentinel: creates sentinel and writes event on first call" {
+@test "emit_manual_install_event_once: writes a manual install event and sentinel" {
     create_consent_signal
-    check_install_sentinel "cursor" "validate_mounted_env_files" "install_script"
+    emit_manual_install_event_once "cursor" "validate_mounted_env_files"
     local event_dir
     event_dir="$(get_telemetry_dir)"
-    [[ -f "${event_dir}/.installed-cursor-validate_mounted_env_files-install_script" ]]
-    [[ -f "${event_dir}/events.jsonl" ]]
+    [[ -f "${event_dir}/.installed-cursor-validate_mounted_env_files-manual" ]]
+    local line
+    line=$(cat "${event_dir}/events.jsonl")
+    [[ "$line" == *'"schema":"agent_hook_install"'* ]]
+    [[ "$line" == *'"install_method":"manual"'* ]]
 }
 
-@test "check_install_sentinel: no-op on second call" {
+@test "emit_manual_install_event_once: no-op on second call (sentinel present)" {
     create_consent_signal
-    check_install_sentinel "cursor" "validate_mounted_env_files" "install_script"
+    emit_manual_install_event_once "cursor" "validate_mounted_env_files"
     local event_file
     event_file="$(get_telemetry_dir)/events.jsonl"
     local count_before
     count_before=$(wc -l < "$event_file" | tr -d ' ')
-    check_install_sentinel "cursor" "validate_mounted_env_files" "install_script"
+    emit_manual_install_event_once "cursor" "validate_mounted_env_files"
     local count_after
     count_after=$(wc -l < "$event_file" | tr -d ' ')
     [[ "$count_before" -eq "$count_after" ]]
 }
 
-@test "check_install_sentinel: no-op when consent absent" {
-    check_install_sentinel "cursor" "validate_mounted_env_files" "install_script"
+@test "emit_manual_install_event_once: no-op when consent absent" {
+    emit_manual_install_event_once "cursor" "validate_mounted_env_files"
     local event_dir
     event_dir="$(get_telemetry_dir)"
-    [[ ! -f "${event_dir}/.installed-cursor-validate_mounted_env_files-install_script" ]]
+    [[ ! -f "${event_dir}/.installed-cursor-validate_mounted_env_files-manual" ]]
+    [[ ! -f "${event_dir}/events.jsonl" ]]
 }
 
-@test "check_install_sentinel: dedupes by install_method" {
+@test "emit_manual_install_event_once: keyed by (client, hook_name) — different combos dedupe independently" {
     create_consent_signal
-    check_install_sentinel "cursor" "validate_mounted_env_files" "install_script"
-    check_install_sentinel "cursor" "validate_mounted_env_files" "manual"
-    local event_file
-    event_file="$(get_telemetry_dir)/events.jsonl"
-    # Two distinct install_methods produce two distinct sentinels and events.
+    emit_manual_install_event_once "cursor" "validate_mounted_env_files"
+    emit_manual_install_event_once "claude_code" "validate_mounted_env_files"
+    emit_manual_install_event_once "cursor" "validate_mounted_env_files"
     local count
-    count=$(wc -l < "$event_file" | tr -d ' ')
+    count=$(wc -l < "$(get_telemetry_dir)/events.jsonl" | tr -d ' ')
+    # Two distinct (client, hook_name) pairs → 2 events.
+    # The third call repeats the first pair and is deduped.
     [[ "$count" -eq 2 ]]
 }
 
