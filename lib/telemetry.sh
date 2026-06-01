@@ -94,6 +94,9 @@ write_telemetry_event() {
 }
 
 # Write an agent_hook_execution telemetry event.
+# `mode` and `mount_count` are hook-specific and may be empty for hooks that
+# do not have a meaningful value to populate them; in that case they are
+# serialized as JSON null per the schema.
 write_execution_event() {
     local hook_name="$1"
     local hook_version="$2"
@@ -120,13 +123,28 @@ write_execution_event() {
         deny_reason_json="\"${escaped_deny_reason}\""
     fi
 
-    # The agent_hook_execution snowplow schema (com.1password.app, v1-0-0)
-    # defines duration_ms as a bucketed string enum, not raw milliseconds.
-    local duration_ms_bucket
-    duration_ms_bucket=$(bucket_duration_ms "$duration_ms")
+    local mode_json
+    if [[ -z "$mode" ]]; then
+        mode_json="null"
+    else
+        local escaped_mode
+        escaped_mode=$(escape_json_string "$mode")
+        mode_json="\"${escaped_mode}\""
+    fi
+
+    local mount_count_json
+    if [[ -z "$mount_count" ]]; then
+        mount_count_json="null"
+    else
+        mount_count_json="$mount_count"
+    fi
+
+
+    local duration_bucket
+    duration_bucket=$(bucket_duration_ms "$duration_ms")
 
     local json_line
-    json_line="{\"schema\":\"agent_hook_execution\",\"hook_name\":\"${escaped_hook_name}\",\"hook_version\":\"${escaped_hook_version}\",\"client\":\"${escaped_client}\",\"event_type\":\"${escaped_event_type}\",\"decision\":\"${decision}\",\"deny_reason\":${deny_reason_json},\"duration_ms\":\"${duration_ms_bucket}\",\"mode\":\"${mode}\",\"mount_count\":${mount_count}}"
+    json_line="{\"schema\":\"agent_hook_execution\",\"hook_name\":\"${escaped_hook_name}\",\"hook_version\":\"${escaped_hook_version}\",\"client\":\"${escaped_client}\",\"event_type\":\"${escaped_event_type}\",\"decision\":\"${decision}\",\"deny_reason\":${deny_reason_json},\"duration_bucket\":\"${duration_bucket}\",\"mode\":${mode_json},\"mount_count\":${mount_count_json}}"
 
     write_telemetry_event "$json_line"
 }
@@ -135,28 +153,31 @@ write_execution_event() {
 write_install_event() {
     local client="$1"
     local hook_name="$2"
-    local install_method="$3"
+    local hook_version="$3"
+    local install_method="$4"
 
-    local escaped_client escaped_hook_name
+    local escaped_client escaped_hook_name escaped_hook_version
     escaped_client=$(escape_json_string "$client")
     escaped_hook_name=$(escape_json_string "$hook_name")
+    escaped_hook_version=$(escape_json_string "$hook_version")
 
     local json_line
-    json_line="{\"schema\":\"agent_hook_install\",\"client\":\"${escaped_client}\",\"hook_name\":\"${escaped_hook_name}\",\"install_method\":\"${install_method}\"}"
+    json_line="{\"schema\":\"agent_hook_install\",\"client\":\"${escaped_client}\",\"hook_name\":\"${escaped_hook_name}\",\"hook_version\":\"${escaped_hook_version}\",\"install_method\":\"${install_method}\"}"
 
     write_telemetry_event "$json_line"
 }
 
 # Emit an `agent_hook_install` event with install_method=manual exactly once
-# per (client, hook_name). Intended for `bin/run-hook.sh` only — without the
-# sentinel, the bundle being run from a manually-copied location would emit
-# an install event on every hook invocation.
+# per (client, hook_name, hook_version). Intended for `bin/run-hook.sh` only —
+# without the sentinel, the bundle being run from a manually-copied location
+# would emit an install event on every hook invocation.
 #
 # All other install paths (install.sh, plugin marketplaces) call
 # write_install_event directly.
 emit_manual_install_event_once() {
     local client="$1"
     local hook_name="$2"
+    local hook_version="$3"
     local event_dir
     event_dir=$(get_telemetry_dir)
 
@@ -166,9 +187,9 @@ emit_manual_install_event_once() {
 
     mkdir -p "$event_dir" 2>/dev/null || return 0
 
-    local sentinel="${event_dir}/.installed-${client}-${hook_name}-manual"
+    local sentinel="${event_dir}/.installed-${client}-${hook_name}-${hook_version}-manual"
     if [[ ! -f "$sentinel" ]]; then
-        write_install_event "$client" "$hook_name" "manual"
+        write_install_event "$client" "$hook_name" "$hook_version" "manual"
         touch "$sentinel" 2>/dev/null || true
     fi
 }

@@ -120,9 +120,9 @@ log "Hook result: decision=${decision} duration_ms=${duration_ms}"
     hook_mount_count=$(extract_json_integer "$canonical_output" "mount_count")
     hook_deny_reason=$(extract_json_string "$canonical_output" "deny_reason")
 
-    # Defaults for hooks that don't emit these fields
-    [[ -z "$hook_mode" ]] && hook_mode="default"
-    [[ -z "$hook_mount_count" ]] && hook_mount_count="0"
+    # mode / mount_count are validate_mounted_env_files-specific. Hooks that
+    # do not populate them leave the values empty here, and write_execution_event
+    # serializes empty as JSON null per the schema.
 
     install_method=$(detect_install_method "$SCRIPT_DIR")
 
@@ -144,7 +144,7 @@ log "Hook result: decision=${decision} duration_ms=${duration_ms}"
     # keep run-hook.sh from re-emitting the manual event on every hook
     # invocation.
     if [[ "$install_method" == "manual" ]]; then
-        emit_manual_install_event_once "$detected_client" "$HOOK_NAME"
+        emit_manual_install_event_once "$detected_client" "$HOOK_NAME" "$HOOK_VERSION"
     fi
 ) 2>/dev/null || true
 

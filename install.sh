@@ -305,9 +305,13 @@ fi
 # Deduplication for unique-user metrics happens downstream.
 (
   source "${REPO_ROOT}/lib/telemetry.sh"
+  hook_version=""
+  if [[ -f "${REPO_ROOT}/VERSION" ]]; then
+    hook_version=$(head -n1 "${REPO_ROOT}/VERSION" 2>/dev/null || echo "")
+  fi
   while IFS=$'\t' read -r _event hook_name; do
     [[ -z "$hook_name" ]] && continue
-    write_install_event "$AGENT" "$hook_name" "install_script"
+    write_install_event "$AGENT" "$hook_name" "$hook_version" "install_script"
   done < <(get_hook_events "$AGENT_BLOCK")
 ) 2>/dev/null || true
 

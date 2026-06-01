@@ -164,8 +164,8 @@ create_consent_signal() {
     [[ "$line" == *'"client":"cursor"'* ]]
     [[ "$line" == *'"decision":"allow"'* ]]
     [[ "$line" == *'"deny_reason":null'* ]]
-    [[ "$line" == *'"duration_ms":"ms_0_to_50"'* ]]
-    [[ "$line" != *'"duration_bucket"'* ]]
+    [[ "$line" == *'"duration_bucket":"ms_0_to_50"'* ]]
+    [[ "$line" != *'"duration_ms"'* ]]
     [[ "$line" == *'"mode":"configured"'* ]]
     [[ "$line" == *'"mount_count":3'* ]]
 }
@@ -188,8 +188,52 @@ create_consent_signal() {
     line=$(cat "$event_file")
     [[ "$line" == *'"deny_reason":"file_missing"'* ]]
     [[ "$line" == *'"decision":"deny"'* ]]
-    [[ "$line" == *'"duration_ms":"ms_1000_to_5000"'* ]]
-    [[ "$line" != *'"duration_bucket"'* ]]
+    [[ "$line" == *'"duration_bucket":"ms_1000_to_5000"'* ]]
+    [[ "$line" != *'"duration_ms"'* ]]
+}
+
+@test "write_execution_event: empty mode and mount_count serialize as JSON null" {
+    create_consent_signal
+    write_execution_event \
+        "before_shell_execution" \
+        "1.0.0" \
+        "cursor" \
+        "before_shell_execution" \
+        "allow" \
+        "" \
+        "42" \
+        "" \
+        ""
+    local event_file
+    event_file="$(get_telemetry_dir)/events.jsonl"
+    local line
+    line=$(cat "$event_file")
+    [[ "$line" == *'"mode":null'* ]]
+    [[ "$line" == *'"mount_count":null'* ]]
+    # JSON must still be parseable
+    if command -v python3 >/dev/null 2>&1; then
+        echo "$line" | python3 -c 'import sys, json; json.loads(sys.stdin.read())'
+    fi
+}
+
+@test "write_execution_event: accepts any deny_reason string (free-form per schema)" {
+    create_consent_signal
+    # The schema relaxed deny_reason from a closed enum to a free-form string
+    # so new denial reasons (policy_violation, timeout, etc.) do not require
+    # a schema bump. The writer must just escape and forward the value.
+    write_execution_event \
+        "before_shell_execution" \
+        "1.0.0" \
+        "cursor" \
+        "before_shell_execution" \
+        "deny" \
+        "policy_violation" \
+        "100" \
+        "" \
+        ""
+    local line
+    line=$(cat "$(get_telemetry_dir)/events.jsonl")
+    [[ "$line" == *'"deny_reason":"policy_violation"'* ]]
 }
 
 @test "write_execution_event: deny_reason is JSON-escaped" {
@@ -225,7 +269,7 @@ create_consent_signal() {
 
 @test "write_install_event: correct JSON structure" {
     create_consent_signal
-    write_install_event "cursor" "validate_mounted_env_files" "install_script"
+    write_install_event "cursor" "validate_mounted_env_files" "1.0.0" "install_script"
     local event_file
     event_file="$(get_telemetry_dir)/events.jsonl"
     local line
@@ -233,6 +277,7 @@ create_consent_signal() {
     [[ "$line" == *'"schema":"agent_hook_install"'* ]]
     [[ "$line" == *'"client":"cursor"'* ]]
     [[ "$line" == *'"hook_name":"validate_mounted_env_files"'* ]]
+    [[ "$line" == *'"hook_version":"1.0.0"'* ]]
     [[ "$line" == *'"install_method":"install_script"'* ]]
 }
 
@@ -240,46 +285,58 @@ create_consent_signal() {
 
 @test "emit_manual_install_event_once: writes a manual install event and sentinel" {
     create_consent_signal
-    emit_manual_install_event_once "cursor" "validate_mounted_env_files"
+    emit_manual_install_event_once "cursor" "validate_mounted_env_files" "1.0.0"
     local event_dir
     event_dir="$(get_telemetry_dir)"
-    [[ -f "${event_dir}/.installed-cursor-validate_mounted_env_files-manual" ]]
+    [[ -f "${event_dir}/.installed-cursor-validate_mounted_env_files-1.0.0-manual" ]]
     local line
     line=$(cat "${event_dir}/events.jsonl")
     [[ "$line" == *'"schema":"agent_hook_install"'* ]]
     [[ "$line" == *'"install_method":"manual"'* ]]
+    [[ "$line" == *'"hook_version":"1.0.0"'* ]]
 }
 
 @test "emit_manual_install_event_once: no-op on second call (sentinel present)" {
     create_consent_signal
-    emit_manual_install_event_once "cursor" "validate_mounted_env_files"
+    emit_manual_install_event_once "cursor" "validate_mounted_env_files" "1.0.0"
     local event_file
     event_file="$(get_telemetry_dir)/events.jsonl"
     local count_before
     count_before=$(wc -l < "$event_file" | tr -d ' ')
-    emit_manual_install_event_once "cursor" "validate_mounted_env_files"
+    emit_manual_install_event_once "cursor" "validate_mounted_env_files" "1.0.0"
     local count_after
     count_after=$(wc -l < "$event_file" | tr -d ' ')
     [[ "$count_before" -eq "$count_after" ]]
 }
 
 @test "emit_manual_install_event_once: no-op when consent absent" {
-    emit_manual_install_event_once "cursor" "validate_mounted_env_files"
+    emit_manual_install_event_once "cursor" "validate_mounted_env_files" "1.0.0"
     local event_dir
     event_dir="$(get_telemetry_dir)"
-    [[ ! -f "${event_dir}/.installed-cursor-validate_mounted_env_files-manual" ]]
+    [[ ! -f "${event_dir}/.installed-cursor-validate_mounted_env_files-1.0.0-manual" ]]
     [[ ! -f "${event_dir}/events.jsonl" ]]
 }
 
-@test "emit_manual_install_event_once: keyed by (client, hook_name) — different combos dedupe independently" {
+@test "emit_manual_install_event_once: keyed by (client, hook_name, hook_version) — independent dedupe" {
     create_consent_signal
-    emit_manual_install_event_once "cursor" "validate_mounted_env_files"
-    emit_manual_install_event_once "claude_code" "validate_mounted_env_files"
-    emit_manual_install_event_once "cursor" "validate_mounted_env_files"
+    emit_manual_install_event_once "cursor" "validate_mounted_env_files" "1.0.0"
+    emit_manual_install_event_once "claude_code" "validate_mounted_env_files" "1.0.0"
+    emit_manual_install_event_once "cursor" "validate_mounted_env_files" "1.0.0"
     local count
     count=$(wc -l < "$(get_telemetry_dir)/events.jsonl" | tr -d ' ')
-    # Two distinct (client, hook_name) pairs → 2 events.
-    # The third call repeats the first pair and is deduped.
+    # Three calls: two distinct triples → 2 events. The third call repeats
+    # the first triple and is deduped.
+    [[ "$count" -eq 2 ]]
+}
+
+@test "emit_manual_install_event_once: hook_version bump produces a new event" {
+    create_consent_signal
+    emit_manual_install_event_once "cursor" "validate_mounted_env_files" "1.0.0"
+    emit_manual_install_event_once "cursor" "validate_mounted_env_files" "1.1.0"
+    local count
+    count=$(wc -l < "$(get_telemetry_dir)/events.jsonl" | tr -d ' ')
+    # Same (client, hook_name) but distinct versions → 2 events. This is how
+    # upgrades to a manually-copied bundle become observable.
     [[ "$count" -eq 2 ]]
 }
 
