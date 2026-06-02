@@ -12,6 +12,8 @@ Configuration is agent-specific and may use config files or editor settings. Sco
 
 Other levels (user-specific or global) may be supported by some agents. See each agent’s documentation for details. The table below in **Supported Agents** references documentation.
 
+*By accessing or using 1Password Developer Tools, you agree to the [API and SDK Terms of Service](https://1password.com/legal/api-sdk-terms-of-service).*
+
 ## Supported agents
 
 Use the `--agent` value when running the install script:
@@ -152,6 +154,3 @@ Claude Code — `.claude/settings.json`:
 1. **Hook files** — The bundle directory should contain `bin/run-hook.sh`, `lib/`, `adapters/`, and `hooks/`.
 2. **Config** — Your agent's config file should include an entry that runs `run-hook.sh` with the hook name.
 3. **Run it** — Use the agent or IDE as usual. The hook runs on the configured event. Check the agent's output or logs to confirm.
-
-*By accessing or using 1Password Developer Tools, you agree to the [API and SDK Terms of Service](https://1password.com/legal/api-sdk-terms-of-service).*
-
