@@ -112,9 +112,23 @@ fi
 
 log "Hook result: decision=${decision} duration_ms=${duration_ms}"
 
-# ── 7. Write telemetry event ────────────────────────────────────────────────
-# Wrapped in a subshell with || true to guarantee fail-open behavior.
-# If anything here fails, the hook decision is unaffected.
+# ── 7. Emit client-specific output ──────────────────────────────────────────
+# Capture the exit code so we can run telemetry afterwards (off the hot path)
+# and still exit with the IDE-facing status. claude-code's emit_output returns
+# 2 on deny; under `set -e` this would otherwise terminate the script before
+# telemetry runs.
+emit_status=0
+emit_output "$canonical_output" || emit_status=$?
+
+# ── 8. Write telemetry event in a detached background subshell ──────────────
+# The IDE waits for the whole process to exit. Backgrounding with
+# `&` lets the script exit immediately while the telemetry write completes
+# asynchronously.
+#
+# The `>/dev/null 2>&1` redirect is critical: without it, the subshell
+# inherits the script's stdout/stderr pipes to the IDE, and the IDE's read
+# of stdout would block until the subshell also closes its dup of the fd —
+# defeating the purpose of backgrounding.
 (
     hook_mode=$(extract_json_string "$canonical_output" "mode")
     hook_mount_count=$(extract_json_integer "$canonical_output" "mount_count")
@@ -123,8 +137,6 @@ log "Hook result: decision=${decision} duration_ms=${duration_ms}"
     # mode / mount_count are validate_mounted_env_files-specific. Hooks that
     # do not populate them leave the values empty here, and write_execution_event
     # serializes empty as JSON null per the schema.
-
-    install_method=$(detect_install_method "$SCRIPT_DIR")
 
     write_execution_event \
         "$HOOK_NAME" \
@@ -143,10 +155,10 @@ log "Hook result: decision=${decision} duration_ms=${duration_ms}"
     # emitting their own. The sentinel inside the helper exists purely to
     # keep run-hook.sh from re-emitting the manual event on every hook
     # invocation.
+    install_method=$(detect_install_method "$SCRIPT_DIR")
     if [[ "$install_method" == "manual" ]]; then
         emit_manual_install_event_once "$detected_client" "$HOOK_NAME" "$HOOK_VERSION"
     fi
-) 2>/dev/null || true
+) >/dev/null 2>&1 &
 
-# ── 8–9. Emit client-specific output and exit ───────────────────────────────
-emit_output "$canonical_output"
+exit "$emit_status"
