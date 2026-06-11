@@ -724,7 +724,9 @@ fi
 
 # Derive deny_reason for telemetry
 if [[ "$permission" == "deny" ]]; then
-    if [[ ${#all_missing_invalid[@]} -gt 0 ]]; then
+    if [[ ${#all_missing_invalid[@]} -gt 0 ]] && [[ ${#disabled_mounts[@]} -gt 0 ]]; then
+        deny_reason="file_missing_and_disabled"
+    elif [[ ${#all_missing_invalid[@]} -gt 0 ]]; then
         deny_reason="file_missing"
     elif [[ ${#disabled_mounts[@]} -gt 0 ]]; then
         deny_reason="file_disabled"

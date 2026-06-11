@@ -28,8 +28,8 @@
     },
     "deny_reason": {
       "type": ["string", "null"],
-      "enum": ["file_missing", "file_disabled", null],
-      "description": "Reason for denial. Null when decision is allow. Only present for hooks that validate mounts."
+      "maxLength": 64,
+      "description": "Reason for denial as a snake_case identifier (e.g., file_missing, file_disabled, file_missing_and_disabled, policy_violation, timeout). Null when decision is allow. Only present for hooks that validate mounts."
     }
   },
   "allOf": [
