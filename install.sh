@@ -230,11 +230,12 @@ fi
 
 mkdir -p "${INSTALL_DIR}/bin" "${INSTALL_DIR}/lib" "${INSTALL_DIR}/adapters" "${INSTALL_DIR}/hooks"
 
-# Copy lib and bin
+# Copy lib, bin, and VERSION
 cp "${REPO_ROOT}/bin/run-hook.sh" "${INSTALL_DIR}/bin/run-hook.sh"
 for f in "${REPO_ROOT}/lib/"*.sh; do
   [[ -f "$f" ]] && cp "$f" "${INSTALL_DIR}/lib/"
 done
+[[ -f "${REPO_ROOT}/VERSION" ]] && cp "${REPO_ROOT}/VERSION" "${INSTALL_DIR}/VERSION"
 
 # Copy adapters for this agent
 while IFS= read -r adapter; do
@@ -297,6 +298,22 @@ if [[ -n "$CONFIG_FILE" ]]; then
     echo "" >&2
   fi
 fi
+
+# Write install telemetry event.
+# install.sh emits unconditionally on every run — each explicit install
+# (initial install, reinstall, upgrade) is a real event worth recording.
+# Deduplication for unique-user metrics happens downstream.
+(
+  source "${REPO_ROOT}/lib/telemetry.sh"
+  hook_version=""
+  if [[ -f "${REPO_ROOT}/VERSION" ]]; then
+    hook_version=$(head -n1 "${REPO_ROOT}/VERSION" 2>/dev/null || echo "")
+  fi
+  while IFS=$'\t' read -r _event hook_name; do
+    [[ -z "$hook_name" ]] && continue
+    write_install_event "$AGENT" "$hook_name" "$hook_version" "install_script"
+  done < <(get_hook_events "$AGENT_BLOCK")
+) 2>/dev/null || true
 
 if [[ -n "$CONFIG_FILE" ]]; then
   echo "Done. Hook(s) installed"

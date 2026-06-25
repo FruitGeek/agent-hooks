@@ -89,6 +89,16 @@ parse_json_workspace_roots() {
     return 0
 }
 
+# Extract the first JSON integer field that matches the provided key.
+# Usage: val=$(extract_json_integer "$json" "field_name")
+extract_json_integer() {
+    local json="$1"
+    local key="$2"
+    printf '%s\n' "$json" | grep -oE "\"${key}\"[[:space:]]*:[[:space:]]*[0-9]+" \
+        | head -n 1 \
+        | sed -E "s/.*:[[:space:]]*([0-9]+).*/\1/" || true
+}
+
 # Check whether a key exists anywhere in a JSON object.
 # Usage: json_has_key "$json" "field_name" && echo "exists"
 json_has_key() {

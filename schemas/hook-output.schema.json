@@ -15,6 +15,21 @@
     "message": {
       "type": "string",
       "description": "Human-readable explanation. Must be non-empty when decision is 'deny'. Should be empty string when decision is 'allow'."
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["configured", "default"],
+      "description": "How environment files were discovered. Only present for hooks that validate mounts."
+    },
+    "mount_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of environment files validated. Only present for hooks that validate mounts."
+    },
+    "deny_reason": {
+      "type": ["string", "null"],
+      "maxLength": 64,
+      "description": "Reason for denial as a snake_case identifier (e.g., file_missing, file_disabled, file_missing_and_disabled, policy_violation, timeout). Null when decision is allow. Only present for hooks that validate mounts."
     }
   },
   "allOf": [

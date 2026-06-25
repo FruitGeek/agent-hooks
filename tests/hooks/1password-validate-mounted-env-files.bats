@@ -33,7 +33,7 @@ canonical_one_root='{"client":"cursor","event":"before_shell_execution","type":"
 @test "hook output has decision and message keys" {
     run bash -c "echo '$canonical_empty_roots' | bash \"${HOOK_SCRIPT}\""
     [[ $status -eq 0 ]]
-    local regex='^\{"decision":"allow","message":""\}$'
+    local regex='^\{"decision":"allow","message":"","mode":"default","mount_count":0,"deny_reason":null\}$'
     [[ $output =~ $regex ]]
 }
 
@@ -71,13 +71,13 @@ canonical_one_root='{"client":"cursor","event":"before_shell_execution","type":"
     run bash -c "echo '$canonical_empty_roots' | bash \"${HOOK_SCRIPT}\" 2>&1"
     [[ $status -eq 0 ]]
     [[ $(echo "$output" | wc -l) -eq 1 ]]
-    [[ $output == '{"decision":"allow","message":""}' ]]
+    [[ $output == '{"decision":"allow","message":"","mode":"default","mount_count":0,"deny_reason":null}' ]]
 }
 
 @test "empty workspace_roots returns allow and exit 0" {
     run bash -c "echo '$canonical_empty_roots' | bash \"${HOOK_SCRIPT}\""
     [[ $status -eq 0 ]]
-    [[ "$output" == '{"decision":"allow","message":""}' ]]
+    [[ "$output" == '{"decision":"allow","message":"","mode":"default","mount_count":0,"deny_reason":null}' ]]
 }
 
 # ============================================================================
