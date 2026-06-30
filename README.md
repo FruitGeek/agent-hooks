@@ -154,3 +154,38 @@ Claude Code — `.claude/settings.json`:
 1. **Hook files** — The bundle directory should contain `bin/run-hook.sh`, `lib/`, `adapters/`, and `hooks/`.
 2. **Config** — Your agent's config file should include an entry that runs `run-hook.sh` with the hook name.
 3. **Run it** — Use the agent or IDE as usual. The hook runs on the configured event. Check the agent's output or logs to confirm.
+
+## Telemetry
+
+These hooks emit **opt-in** telemetry so 1Password can understand how agent hooks are installed and used (e.g. plugin vs. script installs, which agents trigger hooks, and how often validation fails). The hooks never make network calls — events are written to a local file that the 1Password desktop app ingests.
+
+### What's collected
+
+Two event types, both free of PII:
+
+- **`agent_hook_execution`** — one per hook run. Records the hook name and version, the client (`cursor`, `claude-code`, `github-copilot`, `windsurf`), the triggering event (e.g. `before_shell_execution`), the decision (`allow` / `deny`) and a coarse reason when denied, a bucketed run duration, the time the hook ran, and — for hooks that validate mounts — the validation mode and the number of files checked.
+- **`agent_hook_install`** — one per install. Records the client, the hook name and version, and how it was installed (`install_script` when installed via `install.sh`, `manual` for a manually-copied bundle). Plugin-marketplace installs are reported separately by the plugin itself.
+
+No file paths, file contents, environment names, secrets, or other PII are ever collected.
+
+### Opt-in and consent
+
+Events are written **only** when the file `~/.config/1Password/telemetry-enabled` exists. The 1Password desktop app creates and removes this file based on your in-app telemetry preference. If the app has never run or you've opted out, the file is absent and **no events are written to disk at all**. Events for opted-out accounts are also dropped on the app side before anything leaves your machine.
+
+### Where events go
+
+Events are appended as JSON lines to:
+
+```
+~/.config/1Password/data/hook-events/events.jsonl
+```
+
+The 1Password desktop app periodically reads and removes this file and forwards events to 1Password's telemetry pipeline. The file is capped at 1 MB. Telemetry is only emitted on **macOS and Linux**.
+
+### Fail-open
+
+Telemetry is best-effort and isolated so it can never affect a hook's decision: any failure (no consent, disk full, missing tools) is silently ignored and the hook proceeds normally.
+
+### Turning it off
+
+Open the 1Password desktop app → **Settings → Manage Account → Data Usage** and turn off product telemetry. The consent file is then removed and the hooks stop writing events.
